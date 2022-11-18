@@ -1,24 +1,31 @@
-import logo from './logo.svg';
-import './App.css';
+import React from "react";
+import {AppBar , Grow,Typography , Container} from '@mui/material';
+import Grid from "@mui/material/Grid";
+
+import Form from "./components/Form/Form";
+import Tasks from "./components/Tasks/Tasks";
+
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+        <Container>
+          <AppBar position="static" color="inherit">
+
+            </AppBar>
+            <Grow in>
+                <Container>
+                    <Grid container alignItems="center" spacing={4} justify="space-between">
+                        <Grid item xs={12} sm={7}>
+                            <Tasks></Tasks>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                            <Form></Form>
+                        </Grid>
+                    </Grid>
+                </Container>
+            </Grow>
+
+        </Container>
   );
 }
 

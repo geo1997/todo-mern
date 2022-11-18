@@ -9,11 +9,14 @@ import Tasks from './routes/Tasks.js'
 
 const app = express();
 
-app.use('/tasks', Tasks);
-app.use(cors);
-app.use(bodyParser.json({extended: true}));
-app.use(bodyParser.urlencoded({extended: true}));
 
+
+
+app.use(bodyParser.urlencoded({limit:"30mb",extended: true}));
+app.use(bodyParser.json({limit:"30mb"})); //converts POST data to JSON
+app.use(cors());
+
+app.use('/tasks', Tasks);
 
 const PORT = process.env.PORT || 8000;
 const DB_URL = 'mongodb+srv://todomern:todomern123@todoprojectmern.pnc9oxj.mongodb.net/?retryWrites=true&w=majority';
