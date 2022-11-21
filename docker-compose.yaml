@@ -1,30 +1,60 @@
-version: "3.8"
+version: "3"
+
 services:
-  mongodb:
-    image: "mongo"
-    volumes:
-      - data:/data/db
+
   backend:
-    build: ./backend
+    # build: server
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: georgesilva97/todo-app-backend:1.0.0
+    container_name: server
+    restart: always
     ports:
-      - "80:80"
+      - 5000:5000
     volumes:
-      - logs:/app/logs
-      - ./backend:/app
-      - /app/node_modules
+      - ./server:/usr/src/app
+      - /usr/src/app/node_modules
     depends_on:
-      - mongodb
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
+      - mongo
+    env_file: /backend/.env
+    networks:
+      - express-mongo
+      - react-express
+
+  mongo:
+    container_name: mongo
+    restart: always
+    image: mongo:4.2.0
     volumes:
-      - ./frontend/src:/app/src
+      - ./data:/data/db
+    networks:
+      - express-mongo
+    expose:
+      - 27017
+
+  frontend:
+    # build: client
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: georgesilva97/todo-app-client:1.0.0
+    container_name: client
+    restart: always
+    ports:
+      - 3000:3000
     stdin_open: true
-    tty: true
+    volumes:
+      - ./client:/usr/app
+      - /usr/app/node_modules
+    networks:
+      - react-express
     depends_on:
       - backend
 
+networks:
+  react-express:
+  express-mongo:
 volumes:
-  data:
-  logs:
+  mongo-data:
+    driver: local

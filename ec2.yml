@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters :
+  AmiId:
+    Type : String
+    Default : 'ami-0c02fb55956c7d316'
+  LaunchTemplateVersionNumber:
+    Type: String
+    Default : "1"
+  InstanceType:
+    Type: String
+    Default : "t2.micro"
+  InstanceSSHKey:
+    Type: String
+    Default : "ec2-todo-app"
+
+Resources:
+  #network resources
+  pubPrivateVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      CidrBlock: 192.168.10.0/26
+  publicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref pubPrivateVPC
+      AvailabilityZone:
+        'Fn::Select':
+          - 0
+          - 'Fn::GetAZs': ''
+      CidrBlock: 192.168.10.0/27
+      MapPublicIpOnLaunch: true
+  internetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "InternetGateWay"
+  gatewayToInternet:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref pubPrivateVPC
+      InternetGatewayId: !Ref internetGateway
+  publicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref pubPrivateVPC
+  publicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: gatewayToInternet
+    Properties:
+      RouteTableId: !Ref publicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref internetGateway
+  publicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref publicSubnet1
+      RouteTableId: !Ref publicRouteTable
+  PublicSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow port 3000 for traffic
+      VpcId:
+        Ref: pubPrivateVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: '0.0.0.0/0'
+  #end network resources
+  #iam role
+
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref EC2Role
+
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "george"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+
+
+
+  SecretManagerReadOnly:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SecretManagerReadOnly
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: ['secretsmanager:GetRandomPassword','secretsmanager:GetResourcePolicy','secretsmanager:GetSecretValue','secretsmanager:DescribeSecret','secretsmanager:ListSecretVersionIds']
+            Resource: '*'
+      Roles:
+        - !Ref EC2Role
+  #end iam role
+
+
+  #instance configs
+  TestLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref AmiId
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref InstanceSSHKey
+        SecurityGroupIds:
+          - !Ref PublicSecurityGroup
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: AutoScaleInstance
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash -x
+            export AWS_DEFAULT_REGION=us-east-1
+
+            sudo yum update -y
+            sudo amazon-linux-extras install docker -y
+            sudo systemctl enable docker
+
+            mkdir -p ~/.docker/cli-plugins/
+            curl -SL https://github.com/docker/compose/releases/download/v2.2.3/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+            chmod +x ~/.docker/cli-plugins/docker-compose
+            sudo systemctl start docker
+
+            sudo yum install git -y
+            TOKEN=$(aws secretsmanager get-secret-value --region us-east-1 --secret-id github-oauth-token --query SecretString --output text | cut -d: -f2 | tr -d \"})
+            git clone https://${TOKEN}:x-oauth-basic@github.com/geo1997/todo-mern
+            sudo chmod 666 /var/run/docker.sock
+            cd todo-mern
+            docker compose up
+
+
+
+  AutoScaleInstance:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: '1'
+      MaxSize: '1'
+      DesiredCapacity: '1'
+      HealthCheckGracePeriod: 300
+      LaunchTemplate:
+        LaunchTemplateId: !Ref TestLaunchTemplate
+        Version: !Ref LaunchTemplateVersionNumber
+      VPCZoneIdentifier:
+        - !Ref publicSubnet1
+      Tags:
+        - Key: Name
+          Value: ToDo_App_Instance
+          PropagateAtLaunch: 'true'
+#end instance configs
+Outputs:
+  pubPrivateVPCID:
+    Description: VPC ID
+    Value: !Ref pubPrivateVPC
+    Export:
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - vpc
